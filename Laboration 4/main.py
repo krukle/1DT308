@@ -60,7 +60,7 @@ def car_soon_stop(argument):
     time.sleep(2)
     start_new_thread(all_stop, tuple('0'))
 
-def all_stop(argment):
+def all_stop(argument):
     """
     from: car_soon_stop
     to: ped_go
