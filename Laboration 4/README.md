@@ -1,3 +1,3 @@
-_Lab4 - Traffic light - Pycom_
+__Lab4 - Traffic light - Pycom__
 
-In this assignment we create a traffic light on a Pycom_
+In this assignment we create a traffic light on a Pycom.
