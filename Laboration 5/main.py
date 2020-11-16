@@ -7,6 +7,34 @@ from machine import PWM
 from _thread import start_new_thread
 from machine import Timer
 
+def mqtt_peds_green():
+    """
+    Turns green led on for peds and sends information to MQTT-server.
+    """
+    ledpedgreen.value(1)
+    client.publish(topic="cowboys/christoffer/peds", msg="GREEN")
+
+def mqtt_peds_red():
+    """
+    Turns red led on for peds and sends information to MQTT-server.
+    """
+    ledpedred.value(1)
+    client.publish(topic="cowboys/christoffer/peds", msg="RED")
+
+def mqtt_cars_green():
+    """
+    Turns green LED on for traffic on and sends information to MQTT-server.
+    """
+    ledcargreen.value(1)
+    client.publish(topic="cowboys/christoffer/cars", msg="GREEN")
+
+def mqtt_cars_red():
+    """
+    Turns red LED on for traffic on and sends information to MQTT-server
+    """
+    ledcarred.value(1)
+    client.publish(topic="cowboys/christoffer/cars", msg="RED")
+
 def buttonEventCallback(argument):
     """
     When button is pressed, 'ledpedbutton' turns on and traffic
@@ -31,6 +59,7 @@ def is_timer_4(argument):
         time.sleep(4-timer.read())
         start_new_thread(car_soon_stop, tuple('0'))
 
+
 def car_go(argument):
     """
     This is the start of the traffic loop.
@@ -43,7 +72,10 @@ def car_go(argument):
     timer.start()
     timer.reset()
     ledcargreen.value(1)
+    client.publish(topic="cowboys/christoffer/cars", msg="GREEN")
     ledpedred.value(1)
+
+    client.publish(topic="cowboys/christoffer/peds", msg="RED")
     buttonCanBePressed = True
 
 def car_soon_stop(argument):
@@ -66,6 +98,7 @@ def all_stop(argument):
     """
     ledcaryellow.value(0)
     ledcarred.value(1)
+    client.publish(topic="cowboys/christoffer/cars", msg="RED")
     time.sleep(1)
     start_new_thread(ped_go, tuple('0'))
 
@@ -80,6 +113,7 @@ def ped_go(argument):
     ledpedbutton.value(0)
     ledpedred.value(0)
     ledpedgreen.value(1)
+    client.publish(topic="cowboys/christoffer/peds", msg="GREEN")
     for i in range(20):#20 times (0.1 + 0.1) = 4 seconds
         ch.duty_cycle(0.5)
         time.sleep(0.1)
@@ -112,6 +146,8 @@ def car_get_ready(argument):
     """
     ledcaryellow.value(1)
     ledpedred.value(1)
+
+    client.publish(topic="cowboys/christoffer/peds", msg="RED")
     ledpedgreen.value(0)
     time.sleep(1)
     ledcarred.value(0)
@@ -122,9 +158,6 @@ def car_get_ready(argument):
 def sub_cb(topic, msg):
     global MSG
     MSG = (msg, topic)
-
-def client_connect():
-    pass
 
 def wifi_connect():
     wlan.connect("LNU-iot", auth=(WLAN.WPA2, "modermodemet"), timeout=5000)
@@ -161,7 +194,7 @@ ch = tim.channel(2, duty_cycle=0, pin=buzzer)
 buttonPin = Pin('P6', mode=Pin.IN, pull=None)
 buttonPin.callback(Pin.IRQ_FALLING, buttonEventCallback)
 
-#Global variable for sub_cb
+#Global variable for messages in MQTT server.
 MSG = (None, None)
 
 #Global variable to check if connected to mqtt server.
@@ -171,7 +204,13 @@ mqtt_connected = False
 wlan = WLAN(mode=WLAN.STA)
 wifi_connect()
 client = MQTTClient("abda03c2-9f4b-43f9-be51-3dc3e126b80a", "iot-edu-lab.lnu.se",user="king", password="arthur", port=1883)
-
+mqtt_connected = True
+client.set_callback(sub_cb)
+client.connect()
+client.subscribe(topic="cowboys/olof/cars")
+client.subscribe(topic="cowboys/olof/peds")
+print("Connected to MQTT\n")
+start_new_thread(car_go, tuple("0"))
 
 while True:
     try:
@@ -179,24 +218,14 @@ while True:
             wifi_connect()
         elif mqtt_connected is False:
             mqtt_connected = True
-            client.set_callback(sub_cb)
             client.connect()
-            client.subscribe(topic="cowboys/olof/lights")
-            print("Connected to MQTT\n")
 
-            #Traffic light starts
-            car_go('argument')
+
         else:
-            # print("Sending 'OFF'")
-            client.publish(topic="cowboys/christoffer/lights", msg="OFF")
-            time.sleep(1)
-            # print("Sending 'ON'")
-            client.publish(topic="cowboys/christoffer/lights", msg="ON")
             client.check_msg()
-            # print(MSG[0])
-            # print(MSG[1])
-            time.sleep(1)
-    except OSErorr as er:
+            print(MSG)
+        time.sleep(1)
+    except OSError as er:
         print("failed: " + str(er)) # give us some idea on what went wrong
         client.disconnect() # disconnect from adafruit IO to free resources
         mqtt_connected = False # mark us disconnected so we know that we should connect again
