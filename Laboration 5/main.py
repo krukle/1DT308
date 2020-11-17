@@ -9,171 +9,190 @@ from machine import Timer
 
 def mqtt_peds_green():
     """
-    Turns green led on for peds and sends information to MQTT-server.
+    Turns green led on for pedestrians and sends information to MQTT-server.
     """
+    print("My pedestrians: green")
+    ledpedbutton.value(0)
+    ledpedred.value(0)
     ledpedgreen.value(1)
     client.publish(topic="cowboys/christoffer/peds", msg="GREEN")
 
 def mqtt_peds_red():
     """
-    Turns red led on for peds and sends information to MQTT-server.
+    Turns red led on for pedestrians and sends information to MQTT-server.
     """
+    print("My pedestrians: red")
+    ledpedgreen.value(0)
     ledpedred.value(1)
     client.publish(topic="cowboys/christoffer/peds", msg="RED")
 
 def mqtt_cars_green():
     """
-    Turns green LED on for traffic on and sends information to MQTT-server.
+    Turns green LED on for traffic and sends information to mqtt-server.
     """
-    ledcargreen.value(1)
+    print("My cars: green")
+
+    #Turns on yellow light for a second before passing to green
+    ledcaryellow.value(1)
     client.publish(topic="cowboys/christoffer/cars", msg="GREEN")
+    time.sleep(1)
+
+    #Turns on green light
+    ledcarred.value(0)
+    ledcaryellow.value(0)
+    ledcargreen.value(1)
 
 def mqtt_cars_red():
     """
     Turns red LED on for traffic on and sends information to MQTT-server
     """
+    print("My cars: red")
+
+    #Turns on yellow light for a second before passing to red
+    ledcaryellow.value(1)
+    ledcargreen.value(0)
+    time.sleep(1)
+
+    #Turns on red light
+    ledcaryellow.value(0)
     ledcarred.value(1)
     client.publish(topic="cowboys/christoffer/cars", msg="RED")
 
 def buttonEventCallback(argument):
     """
-    When button is pressed, 'ledpedbutton' turns on and traffic
-    light loop will begin when 'ledcargreen' has been on for
-    atleast four seconds.
+    When button is pressed; ifButtonCanBePressed is True,
+    start the pedestrian crossing loop in at most 4 seconds.
     """
     global buttonCanBePressed
     if buttonCanBePressed is True:
         ledpedbutton.value(1)
         buttonCanBePressed = False
-        start_new_thread(is_timer_4, tuple('0'))
+        start_new_thread(is_timer_4, ())
 
-def is_timer_4(argument):
+def is_timer_4():
     """
-    Checks if 'ledcargreen' has been on for atleast four
-    seconds, if so, start traffic light loop, if not, wait
-    until it has, then start traffic light loop.
+    Checks if timer has been on for atleast 4
+    seconds, if so, start function, if not, wait
+    until it has, then start function.
     """
-    if timer.read() > 4:
-        start_new_thread(car_soon_stop, tuple('0'))
-    else:
-        time.sleep(4-timer.read())
-        start_new_thread(car_soon_stop, tuple('0'))
+    while timer.read() < 4 or peds == "green":
+        machine.idle()
+    ped_loop()
 
-
-def car_go(argument):
+def car_green():
     """
-    This is the start of the traffic loop.
-    Cars can go: 'ledcargreen' is on, 'ledpedred' is on.
-    Timer for 'ledcargreen' is reset.
-    buttonCanBePressed is set to True.
+    Part of 'standard traffic loop'.
+    Plays for 9s, then goes to car_red.
+    """
+    #Resets timer for pedestrians and green light
+    timer.reset()
+    mqtt_cars_green()
+    mqtt_peds_red()
+    while peds == "green" or timer.read() < 9:
+        machine.idle()
+    while buttonCanBePressed is False:
+        machine.idle()
+    car_red()
+
+def car_red():
+    """
+    Part of 'standard traffic loop'.
+    Plays for 9s, then goes to car_green.
+    """
+    timer.reset()
+    mqtt_cars_red()
+    mqtt_peds_red()
+
+    while timer.read() < 9:
+        machine.idle()
+
+    #Keeps the loop from playing while the pedestrian crossing
+    #loop is ongoing.
+    while buttonCanBePressed is False:
+        machine.idle()
+    car_green()
+
+def ped_loop():
+    """
+    When button is presssed:
+    Loop for pedestrians to cross.
     """
     global buttonCanBePressed
-    #Timer for car_go starts.
-    timer.start()
-    timer.reset()
-    ledcargreen.value(1)
-    client.publish(topic="cowboys/christoffer/cars", msg="GREEN")
-    ledpedred.value(1)
+    client.publish(topic="cowboys/christoffer/peds", msg="GREEN")
 
-    client.publish(topic="cowboys/christoffer/peds", msg="RED")
+    #If traffic light was green when pedestrian Crossing
+    #loop began, turn the traffic light, red.
+    if ledcargreen.value() == 1:
+        mqtt_cars_red()
+
+    #1 second later green light for pedestrians is on.
+    time.sleep(1)
+    mqtt_peds_green()
+
+    #Ticking noise
+    #20 times (0.1 + 0.1) = 4 seconds
+    for i in range(20):
+        ch.duty_cycle(0.5)
+        time.sleep(0.1)
+        ch.duty_cycle(0)
+        time.sleep(0.1)
+    #3 times (0.3+0.3) = 1.8 seconds
+    for i in range(3):
+        ch.duty_cycle(0.5)
+        time.sleep(0.3)
+        ch.duty_cycle(0)
+        time.sleep(0.3)
+
+    #Turns pedestrian crossing red and returns to regular
+    #crossing loop.
+    mqtt_peds_red()
+    ledpedbutton.value(0)
     buttonCanBePressed = True
 
-def car_soon_stop(argument):
-    """
-    from: car_go
-    to: all_stop
-    Cars can go for two more seconds: 'ledcaryellow' is on.
-    """
-    ledcargreen.value(0)
-    ledcaryellow.value(1)
-    time.sleep(2)
-    start_new_thread(all_stop, tuple('0'))
-
-def all_stop(argument):
-    """
-    from: car_soon_stop
-    to: ped_go
-    Cars and pedestrians have to stop: 'ledcarred' is on,
-    'ledpedred' is on.
-    """
-    ledcaryellow.value(0)
-    ledcarred.value(1)
-    client.publish(topic="cowboys/christoffer/cars", msg="RED")
-    time.sleep(1)
-    start_new_thread(ped_go, tuple('0'))
-
-def ped_go(argument):
-    """
-    from: all_stop
-    to: ped_soon_stop
-
-    Pedestrians can go: 'ledpedgreen' and 'ledcarred' is
-    on, buzzer ticks fast.
-    """
-    ledpedbutton.value(0)
-    ledpedred.value(0)
-    ledpedgreen.value(1)
-    client.publish(topic="cowboys/christoffer/peds", msg="GREEN")
-    for i in range(20):#20 times (0.1 + 0.1) = 4 seconds
-        ch.duty_cycle(0.5)
-        time.sleep(0.1)
-        ch.duty_cycle(0)
-        time.sleep(0.1)
-    start_new_thread(ped_soon_stop, tuple('0'))
-
-def ped_soon_stop(argument):
-    """
-    from: ped_go
-    to: car_get_ready
-
-    Pedestrians can go for 1.8 more seconds: 'ledpedgreen' and
-    'ledcarred' is on, buzzer ticks slowly.
-    """
-    for i in range(3):#3 times (0.3+0.3) = 1.8 seconds
-        ch.duty_cycle(0.5)
-        time.sleep(0.3)
-        ch.duty_cycle(0)
-        time.sleep(0.3)
-    start_new_thread(car_get_ready, tuple('0'))
-
-def car_get_ready(argument):
-    """
-    from: ped_soon_stop
-    to: car_go
-
-    Noone can go. Cars can go in 1 second: 'ledcarred',
-    'ledcaryellow' and 'ledpedred' is on.
-    """
-    ledcaryellow.value(1)
-    ledpedred.value(1)
-
-    client.publish(topic="cowboys/christoffer/peds", msg="RED")
-    ledpedgreen.value(0)
-    time.sleep(1)
-    ledcarred.value(0)
-    ledcaryellow.value(0)
-    ledpedbutton.value(0)
-    start_new_thread(car_go, tuple('0'))
-
 def sub_cb(topic, msg):
-    global MSG
-    MSG = (msg, topic)
+    """
+    Takes the values recieved from the MQTT subscription
+    and translates them into variables cars and peds.
+    """
+    global cars, peds
+    topic = topic.decode('utf-8').lower()
+    msg = msg.decode('utf-8').lower()
+    if topic == topic1:
+        cars = msg
+    elif topic == topic2:
+        peds = msg
 
-def wifi_connect():
-    wlan.connect("LNU-iot", auth=(WLAN.WPA2, "modermodemet"), timeout=5000)
+def wifi_connect(wifi, password):
+    """
+    Connects to WIFI.
+    """
+    wlan.connect(wifi, auth=(WLAN.WPA2, password), timeout=5000)
 
     while not wlan.isconnected():
         machine.idle()
     print("Connected to WiFi\n")
 
+def mqtt_connect(topic1, topic2):
+    """
+    Connects to MQTT-server and subscribes to topics 1 and 2.
+    """
+    global mqtt_connected
+    mqtt_connected = True
+    client = MQTTClient("abda03c2-9f4b-43f9-be51-3dc3e126b80a", "iot-edu-lab.lnu.se",user="king", password="arthur", port=1883)
+    client.set_callback(sub_cb)
+    client.connect()
+    client.subscribe(topic=topic1)
+    client.subscribe(topic=topic2)
+    print("Connected to MQTT\n")
+    return client
 
 #If button can be pressed;
 #buttonCanBePressed is set to True
 buttonCanBePressed = True
 
-#Timer for car_go. We want cars to have a green
-#light for atleast 4 seconds.
+#Timer
 timer = Timer.Chrono()
+timer.start()
 
 #Lights for pedestrians
 ledpedbutton = Pin('P7', mode=Pin.OUT)
@@ -194,38 +213,44 @@ ch = tim.channel(2, duty_cycle=0, pin=buzzer)
 buttonPin = Pin('P6', mode=Pin.IN, pull=None)
 buttonPin.callback(Pin.IRQ_FALLING, buttonEventCallback)
 
-#Global variable for messages in MQTT server.
-MSG = (None, None)
-
 #Global variable to check if connected to mqtt server.
 mqtt_connected = False
 
+#Global variables for MQTT subscription topics
+topic1 = "cowboys/olof/cars"
+topic2 = "cowboys/olof/peds"
+
+#Global variables for MQTT subscription messages
+cars = "green"
+peds = "red"
+
 #Wlan
 wlan = WLAN(mode=WLAN.STA)
-wifi_connect()
-client = MQTTClient("abda03c2-9f4b-43f9-be51-3dc3e126b80a", "iot-edu-lab.lnu.se",user="king", password="arthur", port=1883)
-mqtt_connected = True
-client.set_callback(sub_cb)
-client.connect()
-client.subscribe(topic="cowboys/olof/cars")
-client.subscribe(topic="cowboys/olof/peds")
-print("Connected to MQTT\n")
-start_new_thread(car_go, tuple("0"))
+wifi_connect("ChristofferLisen", "EidPetersson")
 
+#MQTTClient
+client = mqtt_connect(topic1, topic2)
+
+#Traffic light begins
+start_new_thread(car_red, ())
+
+#Makes sure everything works as should.
+#If so, checks for messages on MQTT-server.
 while True:
     try:
         if not wlan.isconnected():
-            wifi_connect()
-        elif mqtt_connected is False:
-            mqtt_connected = True
-            client.connect()
+            wifi_connect("ChristofferLisen", "EidPetersson")
 
+        elif not mqtt_connected:
+            client = mqtt_connect(topic1, topic2)
 
         else:
-            client.check_msg()
-            print(MSG)
-        time.sleep(1)
+            client.wait_msg()
+
+            print("Crossing cars:", cars)
+            print("Crossing pedestrians:", peds, "\n")
+
     except OSError as er:
         print("failed: " + str(er)) # give us some idea on what went wrong
-        client.disconnect() # disconnect from adafruit IO to free resources
+        client.disconnect() # disconnect from MQTT server to free resources
         mqtt_connected = False # mark us disconnected so we know that we should connect again
